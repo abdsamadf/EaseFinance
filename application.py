@@ -128,18 +128,21 @@ def register():
             return apology("must provide password", 403)
 
         # Ensure confirmation password was submitted
-        elif not request.form.get("confirm-password"):
+        elif not request.form.get("confirmation"):
             return apology("must provide confirmation password", 403)
 
         # Check password match
-        if request.form.get("password") != request.form.get("confirm-password"):
+        if request.form.get("password") != request.form.get("confirmation"):
             return apology("passwords don't match", 400)
 
+        # Hash the password
         hash_password = generate_password_hash(request.form.get("password"), )
 
+        # Insert username and hash in database
         results = db.execute("INSERT INTO users(username, hash) VALUES(:username, :hash)",
                              username=request.form.get("username"), hash=hash_password)
 
+        # Query database for username
         rows = db.execute("SELECT * FROM users WHERE username = :username",
                           username=request.form.get("username"))
 
