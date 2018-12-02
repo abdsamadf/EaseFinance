@@ -47,7 +47,80 @@ def index():
 @login_required
 def buy():
     """Buy shares of stock"""
-    return apology("TODO")
+
+    # User reached route via POST(as by submitting a form via POST)
+    if request.method == "POST":
+
+        symbol = request.form.get("symbol")
+        shares = request.form.get("shares")
+
+        # Ensure symbol was submitted
+        if not symbol:
+            return apology("missing symbol", 400)
+
+        # Ensure shares was submitted
+        if not shares:
+            return apology("missing shares", 400)
+
+        # Cast shares to integer
+        shares = int(shares)
+
+        # Ensure shares was valid
+        if shares < 0:
+            return apology("invalid shares")
+
+        # Retrieve stock quote
+        quote = lookup(request.form.get("symbol"))
+
+        # Ensure stock quote is valid
+        if not quote:
+            return apology("invalid symbol", 400)
+
+        # Select cash from users table
+        cash = db.execute("SELECT cash from users WHERE id = :users_id", users_id = session['user_id'])
+
+        cash = cash[0]['cash']
+
+        # total price of shares
+        price_of_shares = quote['price'] * shares
+
+        # Ensure user afford the stock
+        if price_of_shares > cash:
+            return apology("can't afford", 400)
+
+        # Select user shares of symbol
+        user_shares = db.execute("SELECT shares FROM portfolios \
+                WHERE users_id = :users_id AND symbol = :symbol",
+                                users_id=session["user_id"],
+                                symbol=quote["symbol"])
+
+        # If user doesn't already have that stock --> create a new object
+        if not user_shares:
+            db.execute("INSERT INTO portfolios (shares, symbol, users_id) \
+                        VALUES(:shares, :symbol, :users_id)",
+                    shares=shares,
+                    symbol=quote["symbol"],
+                    users_id=session["user_id"])
+
+        # buying the same stock
+        # If user already has it --> increase number of shares
+        else:
+            shares_total = int(user_shares[0]["shares"]) + shares
+            db.execute("UPDATE portfolios SET shares=:shares \
+                        WHERE users_id=:users_id AND symbol=:symbol",
+                    shares=shares_total,
+                    users_id=session["user_id"],
+                    symbol=quote["symbol"])
+
+        # update cash
+        db.execute("UPDATE users SET cash = cash - :price_of_shares WHERE id = :users_id", price_of_shares = price_of_shares, users_id = session['user_id'])
+
+        # Redirect user to home page
+        return redirect('/')
+
+        # User reached route via GET (as by clicking a link or via redirect)
+    else:
+        return render_template("buy.html")
 
 
 @app.route("/history")
@@ -117,7 +190,7 @@ def quote():
         if not request.form.get("symbol"):
             return apology("missing symbol", 400)
 
-        # retrieve stock quote
+        # Retrieve stock quote
         quote = lookup(request.form.get("symbol"))
 
         # Ensure stock quote is valid
@@ -157,15 +230,20 @@ def register():
         hash_password = generate_password_hash(request.form.get("password"), )
 
         # Insert username and hash in database
-        results = db.execute("INSERT INTO users(username, hash) VALUES(:username, :hash)",
-                             username=request.form.get("username"), hash=hash_password)
+        new_user_id = db.execute("INSERT INTO users(username, hash) VALUES(:username, :hash)",
+                    username=request.form.get("username"), hash=hash_password)
 
         # Query database for username
         rows = db.execute("SELECT * FROM users WHERE username = :username",
                           username=request.form.get("username"))
 
+        # Ensure username exist
+        if not new_user_id:
+            return apology("usename already exists")
+
         # Remember which user has logged in
-        session["user_id"] = rows[0]["id"]
+        # session["user_id"] = rows[0]["id"]
+        session["user_id"] = new_user_id
 
         # Redirect user to home page
         return redirect("/")
