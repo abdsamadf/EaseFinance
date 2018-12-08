@@ -45,3 +45,9 @@ main img
     /* constrain images on small screens */
     max-width: 100%;
 }
+
+main table
+{
+    /* left contents */
+    text-align: left;
+}

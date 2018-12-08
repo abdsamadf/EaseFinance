@@ -40,7 +40,26 @@ db = SQL("sqlite:///finance.db")
 @login_required
 def index():
     """Show portfolio of stocks"""
-    return apology("TODO")
+
+    # Select all data from portfolio table for login user
+    stocks = db.execute("SELECT * FROM portfolios WHERE users_id = :users_id", users_id=session['user_id'] )
+
+    # Select cash from users table
+    cash = db.execute("SELECT cash FROM users WHERE id = :users_id", users_id=session['user_id'])
+    cash = cash[0]['cash']
+
+    # if stocks data doesn't already exist
+    if not stocks:
+        # New user reached route via (as by clicking a link or via redirect)
+        return render_template("index.html", cash_balance=usd(cash), total_balance=usd(10000))
+
+    # Format stock price and price of shares
+    for stock in stocks:
+        stock["price"] = usd(stock["price"])
+        stock["price_of_shares"] = usd(stock["price_of_shares"])
+
+    # User reached route via (as by clicking a link or via redirect)
+    return render_template("index.html", stocks=stocks, cash_balance=usd(cash), total_balance=usd(10000))
 
 
 @app.route("/buy", methods=["GET", "POST"])
@@ -96,21 +115,29 @@ def buy():
 
         # If user doesn't already have that stock --> create a new object
         if not user_shares:
-            db.execute("INSERT INTO portfolios (shares, symbol, users_id) \
-                        VALUES(:shares, :symbol, :users_id)",
+            db.execute("INSERT INTO portfolios (shares, symbol, users_id, price, price_of_shares, name) \
+                        VALUES(:shares, :symbol, :users_id, :price, :price_of_shares, :name)",
                     shares=shares,
                     symbol=quote["symbol"],
-                    users_id=session["user_id"])
+                    users_id=session["user_id"],
+                    price=quote["price"],
+                    price_of_shares=price_of_shares,
+                    name=quote["name"])
 
         # buying the same stock
-        # If user already has it --> increase number of shares
+        # If user already has it --> increase number of shares and price of shares
         else:
             shares_total = int(user_shares[0]["shares"]) + shares
-            db.execute("UPDATE portfolios SET shares=:shares \
+            price_of_shares_total = quote["price"] * shares_total
+            db.execute("UPDATE portfolios SET shares=:shares, \
+                        price_of_shares=:price_of_shares, \
+                        price=:price \
                         WHERE users_id=:users_id AND symbol=:symbol",
                     shares=shares_total,
                     users_id=session["user_id"],
-                    symbol=quote["symbol"])
+                    symbol=quote["symbol"],
+                    price=quote["price"],
+                    price_of_shares=price_of_shares_total)
 
         # update cash
         db.execute("UPDATE users SET cash = cash - :price_of_shares WHERE id = :users_id", price_of_shares = price_of_shares, users_id = session['user_id'])
@@ -242,7 +269,6 @@ def register():
             return apology("usename already exists")
 
         # Remember which user has logged in
-        # session["user_id"] = rows[0]["id"]
         session["user_id"] = new_user_id
 
         # Redirect user to home page
