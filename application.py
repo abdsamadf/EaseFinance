@@ -40,7 +40,7 @@ db = SQL("sqlite:///finance.db")
 @login_required
 def index():
     """Show portfolio of stocks"""
-
+    total_balance = 0;
     # Select all data from portfolio table for login user
     stocks = db.execute("SELECT * FROM portfolios WHERE users_id = :users_id", users_id=session['user_id'] )
 
@@ -49,17 +49,20 @@ def index():
     cash = cash[0]['cash']
 
     # if stocks data doesn't already exist
-    if not stocks:
+    if not stocks and cash == 10000:
         # New user reached route via (as by clicking a link or via redirect)
         return render_template("index.html", cash_balance=usd(cash), total_balance=usd(10000))
 
     # Format stock price and price of shares
     for stock in stocks:
+        total_balance += stock['shares'] * stock['price']
         stock["price"] = usd(stock["price"])
         stock["price_of_shares"] = usd(stock["price_of_shares"])
 
+    # total balance is grand total of cash + stock total value
+    total_balance += cash;
     # User reached route via (as by clicking a link or via redirect)
-    return render_template("index.html", stocks=stocks, cash_balance=usd(cash), total_balance=usd(10000))
+    return render_template("index.html", stocks=stocks, cash_balance=usd(cash), total_balance=usd(total_balance))
 
 
 @app.route("/buy", methods=["GET", "POST"])
@@ -283,7 +286,74 @@ def register():
 @login_required
 def sell():
     """Sell shares of stock"""
-    return apology("TODO")
+
+    # Select all data from portfolio table for login user
+    stocks = db.execute(
+        "SELECT * FROM portfolios WHERE users_id = :users_id", users_id=session['user_id'])
+
+    if request.method == "POST":
+
+        symbol = request.form.get("symbol")
+        shares = request.form.get("shares")
+
+        # Ensure symbol was submitted
+        if not symbol:
+            return apology("missing symbol", 400)
+
+        # Ensure shares was submitted
+        if not shares:
+            return apology("missing shares", 400)
+
+        # Cast shares to integer
+        shares = int(shares)
+
+        # Ensure shares was valid
+        if shares < 0:
+            return apology("invalid shares")
+
+        # Ensure user has that many shares
+        if shares > stocks[0]["shares"]:
+            return apology("too many shares", 400)
+
+        quote = lookup(symbol)
+
+        price_of_shares = quote["price"] * shares
+
+        # Select user shares of symbol
+        user_shares = db.execute("SELECT shares FROM portfolios \
+                WHERE users_id = :users_id AND symbol = :symbol",
+                                 users_id=session["user_id"],
+                                 symbol=quote["symbol"])
+
+        # update stock user portfolio if user have enough stock to sell
+        if user_shares[0]["shares"] > shares:
+            print("user")
+            shares_diff = int(user_shares[0]["shares"]) - shares
+            price_of_shares_diff = quote["price"] * shares_diff
+            db.execute("UPDATE portfolios SET shares=:shares, \
+                        price_of_shares=:price_of_shares \
+                        WHERE users_id=:users_id AND symbol=:symbol",
+                       shares=shares_diff,
+                       users_id=session["user_id"],
+                       symbol=quote["symbol"],
+                       price_of_shares=price_of_shares_diff)
+
+        elif user_shares[0]["shares"] < shares:
+            return apology("too many shares", 400)
+        # remove stock from user portfolio if user shares == shares
+        else:
+            db.execute("DELETE FROM portfolios WHERE users_id = :users_id AND symbol = :symbol", users_id = session['user_id'], symbol = symbol)
+
+
+        # update cash
+        db.execute("UPDATE users SET cash = cash + :price_of_shares WHERE id = :users_id",
+                   price_of_shares=price_of_shares, users_id=session['user_id'])
+
+        # Redirect user to home page
+        return redirect("/")
+    else:
+        # User reached route via GET (as by clicking a link or via redirect)
+        return render_template("sell.html", stocks = stocks)
 
 
 def errorhandler(e):
