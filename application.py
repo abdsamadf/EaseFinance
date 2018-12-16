@@ -6,6 +6,10 @@ from flask_session import Session
 from tempfile import mkdtemp
 from werkzeug.exceptions import default_exceptions
 from werkzeug.security import check_password_hash, generate_password_hash
+from datetime import datetime
+from pytz import timezone
+from time import gmtime, strftime
+
 
 from helpers import apology, login_required, lookup, usd
 
@@ -61,6 +65,7 @@ def index():
 
     # total balance is grand total of cash + stock total value
     total_balance += cash;
+
     # User reached route via (as by clicking a link or via redirect)
     return render_template("index.html", stocks=stocks, cash_balance=usd(cash), total_balance=usd(total_balance))
 
@@ -116,6 +121,15 @@ def buy():
                                 users_id=session["user_id"],
                                 symbol=quote["symbol"])
 
+        # Insert transaction data in history table
+        history = db.execute("INSERT INTO history (users_id, shares, symbol, price, transacted) \
+                    VALUES(:users_id, :shares, :symbol, :price, :transacted)",
+                    users_id=session['user_id'],
+                    shares=shares,
+                    symbol=quote["symbol"],
+                    price=quote["price"],
+                    transacted=strftime("%Y-%m-%d %H:%M:%S", gmtime()))
+
         # If user doesn't already have that stock --> create a new object
         if not user_shares:
             db.execute("INSERT INTO portfolios (shares, symbol, users_id, price, price_of_shares, name) \
@@ -143,7 +157,7 @@ def buy():
                     price_of_shares=price_of_shares_total)
 
         # update cash
-        db.execute("UPDATE users SET cash = cash - :price_of_shares WHERE id = :users_id", price_of_shares = price_of_shares, users_id = session['user_id'])
+        db.execute("UPDATE users SET cash = cash  - :price_of_shares WHERE id = :users_id", price_of_shares = price_of_shares, users_id = session['user_id'])
 
         # Redirect user to home page
         return redirect('/')
@@ -157,7 +171,16 @@ def buy():
 @login_required
 def history():
     """Show history of transactions"""
-    return apology("TODO")
+
+    # Select all data from history table for login user
+    transactions = db.execute("SELECT * FROM history WHERE users_id = :users_id", users_id=session['user_id'])
+
+    # Format price
+    for transaction in transactions:
+        transaction["price"] = usd(transaction["price"])
+
+    # User reached route via GET (as by clicking a link or via redirect)
+    return render_template("history.html", transactions = transactions)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -319,6 +342,15 @@ def sell():
 
         price_of_shares = quote["price"] * shares
 
+        # Insert transaction data in history table
+        history = db.execute("INSERT INTO history (users_id, shares, symbol, price, transacted) \
+                    VALUES(:users_id, :shares, :symbol, :price, :transacted)",
+                             users_id = session['user_id'],
+                             shares = -shares,
+                             symbol = quote["symbol"],
+                             price = quote["price"],
+                             transacted = strftime("%Y-%m-%d %H:%M:%S", gmtime()))
+
         # Select user shares of symbol
         user_shares = db.execute("SELECT shares FROM portfolios \
                 WHERE users_id = :users_id AND symbol = :symbol",
@@ -327,7 +359,6 @@ def sell():
 
         # update stock user portfolio if user have enough stock to sell
         if user_shares[0]["shares"] > shares:
-            print("user")
             shares_diff = int(user_shares[0]["shares"]) - shares
             price_of_shares_diff = quote["price"] * shares_diff
             db.execute("UPDATE portfolios SET shares=:shares, \
@@ -340,6 +371,7 @@ def sell():
 
         elif user_shares[0]["shares"] < shares:
             return apology("too many shares", 400)
+
         # remove stock from user portfolio if user shares == shares
         else:
             db.execute("DELETE FROM portfolios WHERE users_id = :users_id AND symbol = :symbol", users_id = session['user_id'], symbol = symbol)
