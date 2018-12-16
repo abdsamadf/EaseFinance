@@ -89,8 +89,11 @@ def buy():
         if not shares:
             return apology("missing shares", 400)
 
-        # Cast shares to integer
-        shares = int(shares)
+        try:
+            # Cast shares to integer
+            shares = int(shares)
+        except ValueError:
+            return apology("shares must be positive integer")
 
         # Ensure shares was valid
         if shares < 0:
@@ -158,6 +161,9 @@ def buy():
 
         # update cash
         db.execute("UPDATE users SET cash = cash  - :price_of_shares WHERE id = :users_id", price_of_shares = price_of_shares, users_id = session['user_id'])
+
+        # flash message for successfully buy a stock
+        flash("Bought!")
 
         # Redirect user to home page
         return redirect('/')
@@ -265,22 +271,22 @@ def register():
 
         # Ensure username was submitted
         if not request.form.get("username"):
-            return apology("must provide username", 403)
+            return apology("must provide username", 400)
 
         # Ensure password was submitted
         elif not request.form.get("password"):
-            return apology("must provide password", 403)
+            return apology("must provide password", 400)
 
         # Ensure confirmation password was submitted
         elif not request.form.get("confirmation"):
-            return apology("must provide confirmation password", 403)
+            return apology("must provide confirmation password", 400)
 
         # Check password match
         if request.form.get("password") != request.form.get("confirmation"):
             return apology("passwords don't match", 400)
 
         # Hash the password
-        hash_password = generate_password_hash(request.form.get("password"), )
+        hash_password = generate_password_hash(request.form.get("password"))
 
         # Insert username and hash in database
         new_user_id = db.execute("INSERT INTO users(username, hash) VALUES(:username, :hash)",
@@ -297,6 +303,8 @@ def register():
         # Remember which user has logged in
         session["user_id"] = new_user_id
 
+        # flash message for successfully user registration
+        flash("Registered!")
         # Redirect user to home page
         return redirect("/")
 
@@ -380,6 +388,9 @@ def sell():
         # update cash
         db.execute("UPDATE users SET cash = cash + :price_of_shares WHERE id = :users_id",
                    price_of_shares=price_of_shares, users_id=session['user_id'])
+
+        # flash message for successfully sell a stock
+        flash("Sold!")
 
         # Redirect user to home page
         return redirect("/")
