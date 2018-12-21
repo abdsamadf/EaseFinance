@@ -51,7 +51,7 @@ class SQL(object):
 
         # Log statements to standard error
         logging.basicConfig(level=logging.DEBUG)
-        self.logger = logging.getLogger("cs50")
+        self.logger = logging.getLogger("ease")
         disabled = self.logger.disabled
 
         # Test database
