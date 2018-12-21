@@ -6,8 +6,6 @@ from flask_session import Session
 from tempfile import mkdtemp
 from werkzeug.exceptions import default_exceptions
 from werkzeug.security import check_password_hash, generate_password_hash
-from datetime import datetime
-from pytz import timezone
 from time import gmtime, strftime
 
 
@@ -20,12 +18,15 @@ app = Flask(__name__)
 app.config["TEMPLATES_AUTO_RELOAD"] = True
 
 # Ensure responses aren't cached
+
+
 @app.after_request
 def after_request(response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Expires"] = 0
     response.headers["Pragma"] = "no-cache"
     return response
+
 
 # Custom filter
 app.jinja_env.filters["usd"] = usd
@@ -44,18 +45,19 @@ db = SQL("sqlite:///finance.db")
 @login_required
 def index():
     """Show portfolio of stocks"""
-    total_balance = 0;
+    total_balance = 0
     # Select all data from portfolio table for login user
-    stocks = db.execute("SELECT * FROM portfolios WHERE users_id = :users_id", users_id=session['user_id'] )
+    stocks = db.execute("SELECT * FROM portfolios WHERE users_id = :users_id", users_id=session['user_id'])
 
     # Select cash from users table
-    cash = db.execute("SELECT cash FROM users WHERE id = :users_id", users_id=session['user_id'])
+    cash = db.execute("SELECT cash FROM users WHERE id = :users_id",
+                      users_id=session['user_id'])
     cash = cash[0]['cash']
 
     # if stocks data doesn't already exist
-    if not stocks and cash == 10000:
+    if not stocks:
         # New user reached route via (as by clicking a link or via redirect)
-        return render_template("index.html", cash_balance=usd(cash), total_balance=usd(10000))
+        return render_template("index.html", cash_balance=usd(cash), total_balance=usd(cash))
 
     # Format stock price and price of shares
     for stock in stocks:
@@ -64,7 +66,7 @@ def index():
         stock["price_of_shares"] = usd(stock["price_of_shares"])
 
     # total balance is grand total of cash + stock total value
-    total_balance += cash;
+    total_balance += cash
 
     # User reached route via (as by clicking a link or via redirect)
     return render_template("index.html", stocks=stocks, cash_balance=usd(cash), total_balance=usd(total_balance))
@@ -107,7 +109,7 @@ def buy():
             return apology("invalid symbol", 400)
 
         # Select cash from users table
-        cash = db.execute("SELECT cash from users WHERE id = :users_id", users_id = session['user_id'])
+        cash = db.execute("SELECT cash from users WHERE id = :users_id", users_id=session['user_id'])
 
         cash = cash[0]['cash']
 
@@ -121,28 +123,28 @@ def buy():
         # Select user shares of symbol
         user_shares = db.execute("SELECT shares FROM portfolios \
                 WHERE users_id = :users_id AND symbol = :symbol",
-                                users_id=session["user_id"],
-                                symbol=quote["symbol"])
+                                 users_id=session["user_id"],
+                                 symbol=quote["symbol"])
 
         # Insert transaction data in history table
         history = db.execute("INSERT INTO history (users_id, shares, symbol, price, transacted) \
                     VALUES(:users_id, :shares, :symbol, :price, :transacted)",
-                    users_id=session['user_id'],
-                    shares=shares,
-                    symbol=quote["symbol"],
-                    price=quote["price"],
-                    transacted=strftime("%Y-%m-%d %H:%M:%S", gmtime()))
+                             users_id=session['user_id'],
+                             shares=shares,
+                             symbol=quote["symbol"],
+                             price=quote["price"],
+                             transacted=strftime("%Y-%m-%d %H:%M:%S", gmtime()))
 
         # If user doesn't already have that stock --> create a new object
         if not user_shares:
             db.execute("INSERT INTO portfolios (shares, symbol, users_id, price, price_of_shares, name) \
                         VALUES(:shares, :symbol, :users_id, :price, :price_of_shares, :name)",
-                    shares=shares,
-                    symbol=quote["symbol"],
-                    users_id=session["user_id"],
-                    price=quote["price"],
-                    price_of_shares=price_of_shares,
-                    name=quote["name"])
+                       shares=shares,
+                       symbol=quote["symbol"],
+                       users_id=session["user_id"],
+                       price=quote["price"],
+                       price_of_shares=price_of_shares,
+                       name=quote["name"])
 
         # buying the same stock
         # If user already has it --> increase number of shares and price of shares
@@ -153,14 +155,16 @@ def buy():
                         price_of_shares=:price_of_shares, \
                         price=:price \
                         WHERE users_id=:users_id AND symbol=:symbol",
-                    shares=shares_total,
-                    users_id=session["user_id"],
-                    symbol=quote["symbol"],
-                    price=quote["price"],
-                    price_of_shares=price_of_shares_total)
+                       shares=shares_total,
+                       users_id=session["user_id"],
+                       symbol=quote["symbol"],
+                       price=quote["price"],
+                       price_of_shares=price_of_shares_total)
 
         # update cash
-        db.execute("UPDATE users SET cash = cash  - :price_of_shares WHERE id = :users_id", price_of_shares = price_of_shares, users_id = session['user_id'])
+        db.execute("UPDATE users SET cash = cash - :price_of_shares WHERE id = :users_id",
+                   price_of_shares=price_of_shares,
+                   users_id=session['user_id'])
 
         # flash message for successfully buy a stock
         flash("Bought!")
@@ -186,7 +190,7 @@ def history():
         transaction["price"] = usd(transaction["price"])
 
     # User reached route via GET (as by clicking a link or via redirect)
-    return render_template("history.html", transactions = transactions)
+    return render_template("history.html", transactions=transactions)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -262,6 +266,7 @@ def quote():
     else:
         return render_template("quote.html")
 
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     """Register user"""
@@ -290,7 +295,8 @@ def register():
 
         # Insert username and hash in database
         new_user_id = db.execute("INSERT INTO users(username, hash) VALUES(:username, :hash)",
-                    username=request.form.get("username"), hash=hash_password)
+                                 username=request.form.get("username"),
+                                 hash=hash_password)
 
         # Query database for username
         rows = db.execute("SELECT * FROM users WHERE username = :username",
@@ -353,11 +359,11 @@ def sell():
         # Insert transaction data in history table
         history = db.execute("INSERT INTO history (users_id, shares, symbol, price, transacted) \
                     VALUES(:users_id, :shares, :symbol, :price, :transacted)",
-                             users_id = session['user_id'],
-                             shares = -shares,
-                             symbol = quote["symbol"],
-                             price = quote["price"],
-                             transacted = strftime("%Y-%m-%d %H:%M:%S", gmtime()))
+                             users_id=session['user_id'],
+                             shares=-shares,
+                             symbol=quote["symbol"],
+                             price=quote["price"],
+                             transacted=strftime("%Y-%m-%d %H:%M:%S", gmtime()))
 
         # Select user shares of symbol
         user_shares = db.execute("SELECT shares FROM portfolios \
@@ -382,8 +388,9 @@ def sell():
 
         # remove stock from user portfolio if user shares == shares
         else:
-            db.execute("DELETE FROM portfolios WHERE users_id = :users_id AND symbol = :symbol", users_id = session['user_id'], symbol = symbol)
-
+            db.execute("DELETE FROM portfolios WHERE users_id=:users_id            AND symbol=:symbol",
+                       users_id=session['user_id'],
+                       symbol=symbol)
 
         # update cash
         db.execute("UPDATE users SET cash = cash + :price_of_shares WHERE id = :users_id",
@@ -396,7 +403,54 @@ def sell():
         return redirect("/")
     else:
         # User reached route via GET (as by clicking a link or via redirect)
-        return render_template("sell.html", stocks = stocks)
+        return render_template("sell.html", stocks=stocks)
+
+
+@app.route("/fund", methods=["GET", "POST"])
+@login_required
+def fund():
+    """ Add additional cash """
+
+    # User reached route via POST(as by submitting a form via POST)
+    if request.method == "POST":
+
+        funds = request.form.get("funds")
+
+        # Ensure shares was submitted
+        if not funds:
+            return apology("missing funds", 400)
+
+        try:
+            # Cast funds to integer
+            funds = int(funds)
+        except ValueError:
+            return apology("funds must be positive integer")
+
+        # Ensure funds was valid
+        if funds <= 0:
+            return apology("invalid funds")
+
+        # Select all data from portfolio table for login user
+        stocks = db.execute(
+            "SELECT * FROM portfolios WHERE users_id = :users_id", users_id=session['user_id'])
+
+        # update cash
+        db.execute("UPDATE users SET cash = cash + :funds WHERE id = :users_id",
+                   funds=funds, users_id=session['user_id'])
+
+        # Select cash from users table
+        cash = db.execute(
+            "SELECT cash FROM users WHERE id = :users_id", users_id=session['user_id'])
+        cash = cash[0]['cash']
+
+        # flash message for successfully add additional cash
+        flash("Deposited!")
+
+        # Redirect user to home page
+        return redirect('/')
+    else:
+        # User reached route via GET (as by clicking a link or via redirect)
+        return render_template("fund.html")
 
 
 def errorhandler(e):
